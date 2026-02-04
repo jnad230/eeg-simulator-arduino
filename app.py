@@ -29,25 +29,35 @@ fig = plt.figure(figsize=(16, 10))
 # ===== PLOT 1: Full Time Domain Signal =====
 ax1 = plt.subplot(3, 1, 1)
 
-time = df['timestamp_ms'] / 1000
-normal_mask = df['mode'] == 'normal'
+# Find transitions
+transition_indices = df[df['mode'] != df['mode'].shift()].index.tolist()
 
-ax1.plot(time[normal_mask], df['eeg_value'][normal_mask], 'b-', linewidth=0.8, alpha=0.7, label='Normal')
-ax1.plot(time[~normal_mask], df['eeg_value'][~normal_mask], 'r-', linewidth=0.8, alpha=0.7, label='Abnormal')
+# Plot each contiguous segment separately
+for i in range(len(transition_indices)):
+    start_idx = transition_indices[i]
+    end_idx = transition_indices[i+1] if i+1 < len(transition_indices) else len(df)
+    
+    segment = df.iloc[start_idx:end_idx]
+    time_seg = segment['timestamp_ms'] / 1000
+    eeg_seg = segment['eeg_value']
+    mode = segment.iloc[0]['mode']
+    
+    color = 'b' if mode == 'normal' else 'r'
+    label = 'Normal' if mode == 'normal' and i == 0 else ('Abnormal' if mode == 'abnormal' and color == 'r' else None)
+    
+    ax1.plot(time_seg, eeg_seg, color=color, linewidth=0.8, alpha=0.7, label=label)
 
 # Mark mode switches
-transitions = df[df['mode'] != df['mode'].shift()].index
-for idx in transitions[1:]:  # Skip first
+for idx in transition_indices[1:]:
     ax1.axvline(x=df.iloc[idx]['timestamp_ms']/1000, color='orange', linestyle='--', linewidth=2, alpha=0.7)
 
 ax1.set_title('EEG Signal - Time Domain', fontsize=14, fontweight='bold')
 ax1.set_xlabel('Time (seconds)', fontsize=12)
 ax1.set_ylabel('Amplitude (μV)', fontsize=12)
 ax1.set_ylim(-3, 3)
-ax1.legend(loc='upper right')
 ax1.grid(True, alpha=0.3)
 
-# Add legend for mode switch
+# Add legend
 from matplotlib.lines import Line2D
 legend_elements = [
     Line2D([0], [0], color='b', lw=2, label='Normal'),
@@ -59,16 +69,20 @@ ax1.legend(handles=legend_elements, loc='upper right')
 # ===== PLOT 2: Normal FFT =====
 ax2 = plt.subplot(3, 1, 2)
 
-normal_data = df[df['mode'] == 'normal']['eeg_value'].values[:1000]
+first_normal_block = df[(df['mode'] == 'normal') & (df['timestamp_ms'] < 5000)]
+normal_data = first_normal_block['eeg_value'].values
+
 sample_rate = 100
+n = len(normal_data)
 
-freqs = np.fft.fftfreq(len(normal_data), 1/sample_rate)
+freqs = np.fft.fftfreq(n, 1/sample_rate)
 fft_vals = np.fft.fft(normal_data)
-magnitude = np.abs(fft_vals) / len(normal_data)
+magnitude = 2.0 * np.abs(fft_vals) / n
 
-positive_mask = freqs > 0
-freq_plot = freqs[positive_mask][:200]
-mag_plot = magnitude[positive_mask][:200]
+# Filter to positive frequencies AND 0-40 Hz range
+freq_mask = (freqs > 0) & (freqs <= 40)
+freq_plot = freqs[freq_mask]
+mag_plot = magnitude[freq_mask]
 
 ax2.plot(freq_plot, mag_plot, 'b-', linewidth=2)
 ax2.set_title('Frequency Spectrum - NORMAL Activity', fontsize=14, fontweight='bold', color='blue')
@@ -77,7 +91,6 @@ ax2.set_ylabel('Power', fontsize=12)
 ax2.set_xlim(0, 40)
 ax2.grid(True, alpha=0.3)
 
-# Add frequency bands
 ax2.axvspan(0.5, 4, alpha=0.15, color='purple', label='Delta (0.5-4 Hz)')
 ax2.axvspan(4, 8, alpha=0.15, color='blue', label='Theta (4-8 Hz)')
 ax2.axvspan(8, 13, alpha=0.15, color='green', label='Alpha (8-13 Hz)')
@@ -87,15 +100,19 @@ ax2.legend(loc='upper right', fontsize=9)
 # ===== PLOT 3: Abnormal FFT =====
 ax3 = plt.subplot(3, 1, 3)
 
-abnormal_data = df[df['mode'] == 'abnormal']['eeg_value'].values[:1000]
+first_abnormal_block = df[(df['mode'] == 'abnormal') & (df['timestamp_ms'] >= 5000) & (df['timestamp_ms'] < 10000)]
+abnormal_data = first_abnormal_block['eeg_value'].values
 
-freqs_ab = np.fft.fftfreq(len(abnormal_data), 1/sample_rate)
+n_ab = len(abnormal_data)
+
+freqs_ab = np.fft.fftfreq(n_ab, 1/sample_rate)
 fft_vals_ab = np.fft.fft(abnormal_data)
-magnitude_ab = np.abs(fft_vals_ab) / len(abnormal_data)
+magnitude_ab = 2.0 * np.abs(fft_vals_ab) / n_ab
 
-positive_mask_ab = freqs_ab > 0
-freq_plot_ab = freqs_ab[positive_mask_ab][:200]
-mag_plot_ab = magnitude_ab[positive_mask_ab][:200]
+# Filter to positive frequencies AND 0-40 Hz range
+freq_mask_ab = (freqs_ab > 0) & (freqs_ab <= 40)
+freq_plot_ab = freqs_ab[freq_mask_ab]
+mag_plot_ab = magnitude_ab[freq_mask_ab]
 
 ax3.plot(freq_plot_ab, mag_plot_ab, 'r-', linewidth=2)
 ax3.set_title('Frequency Spectrum - ABNORMAL Activity (Seizure-Like)', fontsize=14, fontweight='bold', color='red')
@@ -104,7 +121,6 @@ ax3.set_ylabel('Power', fontsize=12)
 ax3.set_xlim(0, 40)
 ax3.grid(True, alpha=0.3)
 
-# Add frequency bands
 ax3.axvspan(0.5, 4, alpha=0.15, color='purple', label='Delta (0.5-4 Hz)')
 ax3.axvspan(4, 8, alpha=0.15, color='blue', label='Theta (4-8 Hz)')
 ax3.axvspan(8, 13, alpha=0.15, color='green', label='Alpha (8-13 Hz)')
