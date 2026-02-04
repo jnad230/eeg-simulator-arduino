@@ -3,7 +3,16 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="EEG Signal Analyzer", layout="wide")
+st.set_page_config(
+    page_title="EEG Signal Analyzer", 
+    layout="wide",
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': None
+    }
+)
 
 st.title("🧠 EEG Signal Analysis: Normal vs Seizure-Like Activity")
 st.markdown("""
